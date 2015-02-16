@@ -1,11 +1,12 @@
 import xwot_discovery
 from xwot_discovery import Resource
+from random import randint
 
 service = xwot_discovery.service()
 properties = {
     'room' : 'A 403'
 }
-resource = Resource(name = "lightswitch-1",
+resource = Resource(name = "lightswitch-%s" % randint(0,100),
                     urn = 'urn:xwot:lightswitch',
                     location = 'http://10.0.0.34/temperature-sensor',
                     port = 80,
