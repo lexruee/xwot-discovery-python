@@ -3,11 +3,11 @@ from xwot_discovery import Resource
 
 service = xwot_discovery.service()
 properties = {
-    'location' : 'http://10.0.0.34/temperature-sensor',
     'room' : 'A 403'
 }
-resource = Resource(name = "temperature-sensor",
-                    urn = 'urn:xwot:temperature-sensor',
+resource = Resource(name = "lightswitch-1",
+                    urn = 'urn:xwot:lightswitch',
+                    location = 'http://10.0.0.34/temperature-sensor',
                     port = 80,
                     properties = properties)
 

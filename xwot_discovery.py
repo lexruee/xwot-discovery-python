@@ -1,29 +1,56 @@
-import zeroconf
-from zeroconf import ServiceStateChange
-
-import socket
 
 class Resource:
+    """ Data container for resource objects. """
 
-    def __init__(self, name, urn, port = None, properties = {}, address = None):
-        self.name = name
-        self.urn = urn
-        self.port = port
-        self.address = address
-        self.properties = properties
+    def __init__(self, name, urn, location, properties = {}, address = None, port = None, info = {}):
+        self._name = name
+        self._port = port
+        self._address = address
+        self._info = info
+        self._properties = properties
+        self._properties['location'] = location
+        self._properties['name'] = name
+        self._properties['urn'] = urn
+
+    def properties(self):
+        return self._properties
+
+    def port(self):
+        return self._port
+
+    def address(self):
+        return self._address
+
+    def info(self):
+        return self._info
+
+    def urn(self):
+        return self._properties['urn']
+
+    def name(self):
+        return self._properties['name']
+
+    def location(self):
+        return self._properties['location']
 
 
-class Adapter(object):
+""""
+    A discover adapter for different discovery protocol implementations.
+"""
+class DiscoveryAdapter(object):
     """A generic adapter interface for using different service discovery protocols."""
 
     def browse():
         raise NotImplementedError('Subclass should implement this!')
 
+
     def register(resource):
         raise NotImplementedError('Subclass should implement this!')
 
+
     def unregister(resource):
         raise NotImplementedError('Subclass should implement this!')
+
 
     def close():
         raise NotImplementedError('Subclass should implement this!')
@@ -32,6 +59,9 @@ class Adapter(object):
 """"
     Zeroconf Servcie Discovery Adapter Layer
 """
+import zeroconf
+from zeroconf import ServiceStateChange
+import socket
 
 class ZeroconfListener(object):
     """
@@ -41,14 +71,18 @@ class ZeroconfListener(object):
     3) status of a service has changed
     """
 
-    def removeService(self, zeroconf, type, name):
-            raise NotImplementedError('Subclass should implement this!')
 
-    def addService(self, zeroconf, type, name):
-            raise NotImplementedError('Subclass should implement this!')
-
-    def onChange(self, zeroconf, type, name, state_change):
+    def removeService(self, service, stype, name):
         raise NotImplementedError('Subclass should implement this!')
+
+
+    def addService(self, service, stype, name):
+        raise NotImplementedError('Subclass should implement this!')
+
+
+    def onChange(self, service, stype, name, state_change):
+        raise NotImplementedError('Subclass should implement this!')
+
 
     def handle(self, zeroconf, service_type, name, state_change):
         if state_change is ServiceStateChange.Added:
@@ -57,7 +91,10 @@ class ZeroconfListener(object):
             self.removeService(zeroconf, service_type, name)
         else:
             pass
+
         self.onChange(zeroconf, service_type, name, state_change)
+
+
 
 class ZeroconfBrowser(ZeroconfListener):
     """
@@ -69,17 +106,35 @@ class ZeroconfBrowser(ZeroconfListener):
     def __init__(self, callback):
         self.callback = callback
 
-    def removeService(self, zeroconf, type, name):
+
+    def _createResource(self, zeroconf, service_type, name):
+        info = zeroconf.get_service_info(service_type, name)
+        address, port = socket.inet_ntoa(info.address), info.port
+        properties = dict(info.properties) # copy dict
+
+        return Resource(name = properties['name'],
+                urn = properties['urn'],
+                port = port,
+                address = address,
+                properties = properties,
+                location = properties['location'],
+                info = info)
+
+
+    def removeService(self, service, stype, name):
         pass
 
-    def addService(self, zeroconf, type, name):
-        self.callback(zeroconf, type, name)
 
-    def onChange(self, zeroconf, service_type, name, state_change):
+    def addService(self, service, stype, name):
+        resource = self._createResource(service, stype, name)
+        self.callback(resource)
+
+
+    def onChange(self, *args):
         pass
 
 
-class ZeroconfAdapter(Adapter):
+class ZeroconfAdapter(DiscoveryAdapter):
     """An adapter for the zeroconf service."""
 
     TYPE = "_xwot._tcp.local."
@@ -88,24 +143,25 @@ class ZeroconfAdapter(Adapter):
         self.zeroconfService = zeroconf.Zeroconf()
         self.services = []
 
+
     def register(self, resource):
         """Registers a resource."""
 
         address = socket.inet_aton("127.0.0.1")
-        if resource.address != None:
-            address = socket.inet_aton(resource.address)
+        if resource.address() != None:
+            address = socket.inet_aton(resource.address())
 
-        name = resource.name
+        name = resource.name()
 
         # fix
-        if not resource.name.endswith(self.TYPE):
-            name = resource.name + '.' + self.TYPE
+        if not resource.name().endswith(self.TYPE):
+            name = resource.name() + '.' + self.TYPE
 
         serviceInfo = zeroconf.ServiceInfo(type = self.TYPE,
                            name = name,
                            address = address,
-                           port = resource.port,
-                           properties = resource.properties)
+                           port = resource.port(),
+                           properties = resource.properties())
         self.zeroconfService.register_service(serviceInfo)
         self.services.append([resource, serviceInfo])
 
@@ -113,33 +169,33 @@ class ZeroconfAdapter(Adapter):
     def unregister(self, resource):
         """Unregisters a resource."""
 
-        removeServices = filter(lambda (resource, _): resource.name == resource.name, self.services)
+        removeServices = filter(lambda (res, _): res.name() == resource.name(), self.services)
         [ self.zeroconfService.unregister_service(serviceInfo) for (_, serviceInfo) in removeServices ]
         self.services = filter(lambda service: service not in removeServices, self.services)
 
 
     def browse(self, callback):
         """Browses the available xwot reources."""
+        # wrap callback into a ZeroconfBrowser
         listener = ZeroconfBrowser(callback)
         zeroconf.ServiceBrowser(self.zeroconfService, self.TYPE, handlers = [listener.handle])
 
 
     def close(self):
+        [ self.zeroconfService.unregister_service(serviceInfo) for (_, serviceInfo) in self.services ]
         self.zeroconfService.close()
 
 
-
-""""
-    Simple Service Discovery Adapter Layer
-"""
-
-class SSDPAdapter(Adapter):
-    pass
+SERVICE = {
+    'zeroconf' : ZeroconfAdapter()
+}
 
 
+def service(protocol = 'zeroconf'):
+    """Returns a discovery service object."""
+    service = SERVICE[protocol]
 
-SERVICE = ZeroconfAdapter()
+    if service == None:
+        raise 'Error!'
 
-def service():
-    """Returns a discover service object."""
-    return SERVICE
+    return service
