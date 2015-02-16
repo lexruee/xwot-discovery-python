@@ -3,15 +3,14 @@ import socket
 service = xwot_discovery.service()
 
 def browse_callback(resource):
-    urn =  resource.urn()
-    name = resource.name()
-    port = resource.port()
-    address = resource.address()
+    # urn =  resource.urn()
+    # name = resource.name()
+    # port = resource.port()
+    # address = resource.address()
     properties = resource.properties()
-    info = resource.info()
 
     print "resource:"
-    print "\n".join([ "%s : %s" % (k,v) for k,v in info.properties.items() ])
+    print "\n".join([ "%s : %s" % (k,v) for k,v in properties.items() ])
     print('\n')
 
 

@@ -1,41 +1,50 @@
+""" This module provides an abstract service discovery interface
+    for finding resources.
+"""
 
 class Resource:
     """ Data container for resource objects. """
 
-    def __init__(self, name, urn, location, properties = {}, address = None, port = None, info = {}):
+    def __init__(self, name, urn, location, properties = {}, address = None, port = None):
         self._name = name
         self._port = port
         self._address = address
-        self._info = info
         self._properties = properties
         self._properties['location'] = location
         self._properties['name'] = name
         self._properties['urn'] = urn
 
+
     def properties(self):
         return self._properties
+
 
     def port(self):
         return self._port
 
+
     def address(self):
         return self._address
+
 
     def info(self):
         return self._info
 
+
     def urn(self):
         return self._properties['urn']
 
+
     def name(self):
         return self._properties['name']
+
 
     def location(self):
         return self._properties['location']
 
 
 """"
-    A discover adapter for different discovery protocol implementations.
+    A discovery adapter for different discovery protocol implementations.
 """
 class DiscoveryAdapter(object):
     """A generic adapter interface for using different service discovery protocols."""
@@ -64,12 +73,10 @@ from zeroconf import ServiceStateChange
 import socket
 
 class ZeroconfListener(object):
-    """
-    A Zeroconf Listener provides an interface whose methods are called if
+    """ A Zeroconf Listener provides an interface whose methods are called if
     1) a new service is discovered
     2) a service is removed
-    3) status of a service has changed
-    """
+    3) status of a service has changed """
 
 
     def removeService(self, service, stype, name):
@@ -97,28 +104,29 @@ class ZeroconfListener(object):
 
 
 class ZeroconfBrowser(ZeroconfListener):
-    """
-        A Zeroconf Browser implements a part of the Zeroconf Listener interface.
+    """ A Zeroconf Browser implements a part of the Zeroconf Listener interface.
         It implements only the addService method which is called if a new service is
-        discovered,
-    """
+        discovered. This class is basically used to wrap browse callbacks. """
 
     def __init__(self, callback):
+        """ Wraps a callback in a ZeroconfBrowser object. """
         self.callback = callback
 
 
     def _createResource(self, zeroconf, service_type, name):
+        """ Creates a resource object based on the details that zeroconf provides. """
+        # get details of the discovered service
         info = zeroconf.get_service_info(service_type, name)
         address, port = socket.inet_ntoa(info.address), info.port
         properties = dict(info.properties) # copy dict
 
+        # create resource object
         return Resource(name = properties['name'],
                 urn = properties['urn'],
                 port = port,
                 address = address,
                 properties = properties,
-                location = properties['location'],
-                info = info)
+                location = properties['location'])
 
 
     def removeService(self, service, stype, name):
@@ -126,6 +134,7 @@ class ZeroconfBrowser(ZeroconfListener):
 
 
     def addService(self, service, stype, name):
+        """ If a new service is discovered the wrapped callback function is called. """
         resource = self._createResource(service, stype, name)
         self.callback(resource)
 
@@ -135,17 +144,19 @@ class ZeroconfBrowser(ZeroconfListener):
 
 
 class ZeroconfAdapter(DiscoveryAdapter):
-    """An adapter for the zeroconf service."""
+    """ An adapter for the zeroconf service. """
 
     TYPE = "_xwot._tcp.local."
 
     def __init__(self):
+        """ This zeroconf adapter provides a simple interface for
+        registering / unregistering resources. """
         self.zeroconfService = zeroconf.Zeroconf()
         self.services = []
 
 
     def register(self, resource):
-        """Registers a resource."""
+        """ Registers a resource. """
 
         address = socket.inet_aton("127.0.0.1")
         if resource.address() != None:
@@ -167,7 +178,7 @@ class ZeroconfAdapter(DiscoveryAdapter):
 
 
     def unregister(self, resource):
-        """Unregisters a resource."""
+        """ Unregisters a resource. """
 
         removeServices = filter(lambda (res, _): res.name() == resource.name(), self.services)
         [ self.zeroconfService.unregister_service(serviceInfo) for (_, serviceInfo) in removeServices ]
@@ -175,7 +186,7 @@ class ZeroconfAdapter(DiscoveryAdapter):
 
 
     def browse(self, callback):
-        """Browses the available xwot reources."""
+        """ Browses the available xwot reources. """
         # wrap callback into a ZeroconfBrowser
         listener = ZeroconfBrowser(callback)
         zeroconf.ServiceBrowser(self.zeroconfService, self.TYPE, handlers = [listener.handle])
@@ -192,7 +203,7 @@ SERVICE = {
 
 
 def service(protocol = 'zeroconf'):
-    """Returns a discovery service object."""
+    """ Returns a discovery service object. """
     service = SERVICE[protocol]
 
     if service == None:
